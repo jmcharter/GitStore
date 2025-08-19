@@ -1,8 +1,11 @@
+import gleam/bit_array
+import gleam/dynamic/decode
 import gleam/http
 import gleam/http/request
 import gleam/http/response
 import gleam/httpc
 import gleam/io
+import gleam/json
 import gleam/result
 import gleam/string
 
@@ -21,7 +24,7 @@ pub type GitHubConfig {
   GithubConfig(owner: String, repo: String, token: String, base_url: String)
 }
 
-pub type GitHubFileResponse {
+pub type GitHubResponse {
   GitHubFileResponse(content: String, encoding: String, sha: String, size: Int)
 }
 
@@ -69,12 +72,38 @@ fn request(config: GitHubConfig, method: http.Method, endpoint: String) {
   })
 }
 
+fn file_from_json(
+  json_string: String,
+) -> Result(GitHubResponse, json.DecodeError) {
+  let file_decoder = {
+    use content <- decode.field(
+      "content",
+      decode.then(decode.string, fn(item) {
+        let decoded =
+          item |> bit_array.base64_decode |> result.try(bit_array.to_string)
+        case decoded {
+          Ok(str) -> decode.success(str)
+          Error(_) -> decode.failure("", "A base64 encoded String")
+        }
+      }),
+    )
+    use encoding <- decode.field("encoding", decode.string)
+    use sha <- decode.field("sha", decode.string)
+    use size <- decode.field("size", decode.int)
+    decode.success(GitHubFileResponse(content:, encoding:, sha:, size:))
+  }
+  json.parse(json_string, using: file_decoder)
+}
+
 pub fn main() -> Nil {
   logging.configure()
   let owner = envoy.get("GITHUB_OWNER") |> result.unwrap("")
   let repo = envoy.get("GITHUB_REPO") |> result.unwrap("")
   let token = envoy.get("GITHUB_TOKEN") |> result.unwrap("")
-  let config = GithubConfig(owner, repo, token, "https://api.github.com")
-  let file = read_file(config, "README.md")
+  let base_url =
+    envoy.get("GITHUB_BASE_URL") |> result.unwrap("https://api.github.com")
+  let config = GithubConfig(owner, repo, token, base_url)
+  let file = read_file(config, "README.md") |> result.unwrap(response.new(400))
+  echo file_from_json(file.body)
   io.println("Hello from git_store!")
 }
