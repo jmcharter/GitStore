@@ -61,6 +61,7 @@ fn contents_url(config: GitHubConfig, path: String) -> String {
 /// Get a file object from a GitHub repository at the given path
 /// Path should be a '/' separated String, e.g:
 /// 'foo/bar/baz'
+/// https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#get-repository-content
 pub fn get_file(
   config: GitHubConfig,
   path: String,
@@ -69,6 +70,8 @@ pub fn get_file(
   send_request(config, http.Get, url, None)
 }
 
+/// Create a file from a file object on a GitHub repository at the given path
+/// https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#create-or-update-file-contents
 fn create_file(
   config: GitHubConfig,
   filename: String,
@@ -82,6 +85,8 @@ fn create_file(
   res
 }
 
+/// Get a file object from a GitHub repositiory and, if it exists, delete it
+/// https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#delete-a-file
 fn delete_file(
   config: GitHubConfig,
   filename: String,
