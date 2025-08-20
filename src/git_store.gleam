@@ -6,6 +6,7 @@ import gleam/http/response
 import gleam/httpc
 import gleam/io
 import gleam/json
+import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
@@ -15,9 +16,14 @@ import logging
 
 import git_store/utils
 
+const create_prefix = "add: "
+
+const delete_prefix = "delete: "
+
 pub type GitStoreError {
   ParsingError(String)
   HTTPError(String)
+  NoFileFound(String)
   GitHubError
 }
 
@@ -33,11 +39,23 @@ pub type GitHubResponse {
 /// Message is the commit message
 /// Content is the base64 encoded text content of the file
 pub type GitHubFile {
-  GitHubFile(message: String, content: String)
+  GitHubFileCreate(message: String, content: String)
+  GitHubFileDelete(message: String, sha: String)
 }
 
 pub fn repos_url(config: GitHubConfig) -> String {
   config.base_url <> "/repos"
+}
+
+fn contents_url(config: GitHubConfig, path: String) -> String {
+  utils.build_path(config.base_url, [
+    "repos",
+    config.owner,
+    config.repo,
+    "contents",
+  ])
+  <> "/"
+  <> path
 }
 
 /// Get a file object from a GitHub repository at the given path
@@ -47,16 +65,7 @@ pub fn get_file(
   config: GitHubConfig,
   path: String,
 ) -> Result(response.Response(String), GitStoreError) {
-  let url =
-    utils.build_path(config.base_url, [
-      "repos",
-      config.owner,
-      config.repo,
-      "contents",
-    ])
-    <> "/"
-    <> path
-
+  let url = contents_url(config, path)
   request(config, http.Get, url, None)
 }
 
@@ -125,30 +134,57 @@ fn file_from_json(
 }
 
 fn file_to_json(file: GitHubFile) -> String {
-  json.object([
-    #("message", json.string(file.message)),
-    #("content", json.string(file.content)),
-  ])
+  let base_fields = [#("message", json.string(file.message))]
+  let other_field = case file {
+    GitHubFileCreate(_msg, content) -> {
+      [#("content", json.string(content))]
+    }
+    GitHubFileDelete(_msg, sha) -> [#("sha", json.string(sha))]
+  }
+  list.append(base_fields, other_field)
+  |> json.object
   |> json.to_string
 }
 
-fn create_file(config: GitHubConfig, filename: String, content: String) {
-  let url =
-    utils.build_path(config.base_url, [
-      "repos",
-      config.owner,
-      config.repo,
-      "contents",
-    ])
-    <> "/"
-    <> filename
+fn create_file(
+  config: GitHubConfig,
+  filename: String,
+  content: String,
+) -> Result(response.Response(String), GitStoreError) {
+  let url = contents_url(config, filename)
   let content =
     content
     |> bit_array.from_string
     |> bit_array.base64_encode(True)
-  let file = GitHubFile("add: " <> filename, content:)
+  let file = GitHubFileCreate(create_prefix <> filename, content:)
   let res = request(config, http.Put, url, Some(file |> file_to_json))
   logging.log(logging.Debug, "Writing file: " <> string.inspect(res))
+  res
+}
+
+fn delete_file(
+  config: GitHubConfig,
+  filename: String,
+) -> Result(response.Response(String), GitStoreError) {
+  let url = contents_url(config, filename)
+  let original = get_file(config, filename)
+  case original {
+    Error(_) -> Error(NoFileFound(filename))
+    Ok(original) -> {
+      let original = original.body |> file_from_json
+      case original {
+        Error(err) -> Error(ParsingError(err |> string.inspect))
+        Ok(original_file) -> {
+          let file =
+            GitHubFileDelete(delete_prefix <> filename, sha: original_file.sha)
+          let res =
+            request(config, http.Delete, url, Some(file |> file_to_json))
+          logging.log(logging.Debug, "Deleting file: " <> string.inspect(res))
+          res
+        }
+      }
+    }
+  }
 }
 
 pub fn main() -> Nil {
@@ -166,5 +202,7 @@ pub fn main() -> Nil {
   let new_file = create_file(config, "test", "foo bar baz")
   let file = get_file(config, "test") |> result.unwrap(response.new(400))
   echo file_from_json(file.body)
+  echo delete_file(config, "test")
+
   io.println("Hello from git_store!")
 }
