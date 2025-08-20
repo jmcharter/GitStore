@@ -66,36 +66,52 @@ pub fn get_file(
   path: String,
 ) -> Result(response.Response(String), GitStoreError) {
   let url = contents_url(config, path)
-  request(config, http.Get, url, None)
+  send_request(config, http.Get, url, None)
 }
 
-fn request(
+fn create_file(
   config: GitHubConfig,
-  method: http.Method,
-  endpoint: String,
-  json_body: Option(String),
-) {
-  use req <- result.try(
-    request.to(endpoint)
-    |> result.map_error(fn(_) {
-      logging.log(logging.Error, "Unable to parse URL")
-      ParsingError("Unable to parse URL: " <> endpoint)
-    }),
-  )
-  let res =
-    req
-    |> request.set_header("Authorization", "Bearer " <> config.token)
-    |> request.set_header("Accept", "application/vnd.github+json")
-    |> request.set_header("User-Agent", "GitStore-Gleam")
-    |> utils.set_json(json_body)
-    |> request.set_method(method)
-    |> httpc.send()
-
+  filename: String,
+  content: String,
+) -> Result(response.Response(String), GitStoreError) {
+  let url = contents_url(config, filename)
+  let content = content |> utils.encode_content
+  let file = GitHubFileCreate(create_prefix <> filename, content:)
+  let res = send_request(config, http.Put, url, Some(file |> file_to_json))
+  logging.log(logging.Debug, "Writing file: " <> string.inspect(res))
   res
-  |> result.map_error(fn(error) {
-    logging.log(logging.Error, string.inspect(error))
-    HTTPError(string.inspect(error))
-  })
+}
+
+fn delete_file(
+  config: GitHubConfig,
+  filename: String,
+) -> Result(response.Response(String), GitStoreError) {
+  let url = contents_url(config, filename)
+  use original <- result.try(
+    get_file(config, filename)
+    |> result.map_error(fn(_) { NoFileFound(filename) }),
+  )
+  use original_file <- result.try(
+    file_from_json(original.body)
+    |> result.map_error(fn(err) { ParsingError(err |> string.inspect) }),
+  )
+  let file = GitHubFileDelete(delete_prefix <> filename, sha: original_file.sha)
+  let res = send_request(config, http.Delete, url, Some(file |> file_to_json))
+  logging.log(logging.Debug, "Deleting file: " <> string.inspect(res))
+  res
+}
+
+fn file_to_json(file: GitHubFile) -> String {
+  let base_fields = [#("message", json.string(file.message))]
+  let other_field = case file {
+    GitHubFileCreate(_msg, content) -> {
+      [#("content", json.string(content))]
+    }
+    GitHubFileDelete(_msg, sha) -> [#("sha", json.string(sha))]
+  }
+  list.append(base_fields, other_field)
+  |> json.object
+  |> json.to_string
 }
 
 /// Parse the JSON data from file.body, converting the base64 encoded content
@@ -133,58 +149,33 @@ fn file_from_json(
   json.parse(json_string, using: file_decoder)
 }
 
-fn file_to_json(file: GitHubFile) -> String {
-  let base_fields = [#("message", json.string(file.message))]
-  let other_field = case file {
-    GitHubFileCreate(_msg, content) -> {
-      [#("content", json.string(content))]
-    }
-    GitHubFileDelete(_msg, sha) -> [#("sha", json.string(sha))]
-  }
-  list.append(base_fields, other_field)
-  |> json.object
-  |> json.to_string
-}
-
-fn create_file(
+fn send_request(
   config: GitHubConfig,
-  filename: String,
-  content: String,
-) -> Result(response.Response(String), GitStoreError) {
-  let url = contents_url(config, filename)
-  let content =
-    content
-    |> bit_array.from_string
-    |> bit_array.base64_encode(True)
-  let file = GitHubFileCreate(create_prefix <> filename, content:)
-  let res = request(config, http.Put, url, Some(file |> file_to_json))
-  logging.log(logging.Debug, "Writing file: " <> string.inspect(res))
+  method: http.Method,
+  endpoint: String,
+  json_body: Option(String),
+) {
+  use req <- result.try(
+    request.to(endpoint)
+    |> result.map_error(fn(_) {
+      logging.log(logging.Error, "Unable to parse URL")
+      ParsingError("Unable to parse URL: " <> endpoint)
+    }),
+  )
+  let res =
+    req
+    |> request.set_header("Authorization", "Bearer " <> config.token)
+    |> request.set_header("Accept", "application/vnd.github+json")
+    |> request.set_header("User-Agent", "GitStore-Gleam")
+    |> utils.set_json(json_body)
+    |> request.set_method(method)
+    |> httpc.send()
+
   res
-}
-
-fn delete_file(
-  config: GitHubConfig,
-  filename: String,
-) -> Result(response.Response(String), GitStoreError) {
-  let url = contents_url(config, filename)
-  let original = get_file(config, filename)
-  case original {
-    Error(_) -> Error(NoFileFound(filename))
-    Ok(original) -> {
-      let original = original.body |> file_from_json
-      case original {
-        Error(err) -> Error(ParsingError(err |> string.inspect))
-        Ok(original_file) -> {
-          let file =
-            GitHubFileDelete(delete_prefix <> filename, sha: original_file.sha)
-          let res =
-            request(config, http.Delete, url, Some(file |> file_to_json))
-          logging.log(logging.Debug, "Deleting file: " <> string.inspect(res))
-          res
-        }
-      }
-    }
-  }
+  |> result.map_error(fn(error) {
+    logging.log(logging.Error, string.inspect(error))
+    HTTPError(string.inspect(error))
+  })
 }
 
 pub fn main() -> Nil {

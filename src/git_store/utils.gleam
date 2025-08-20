@@ -1,3 +1,4 @@
+import gleam/bit_array
 import gleam/http/request
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -17,4 +18,11 @@ pub fn set_json(req: request.Request(String), json_body: Option(String)) {
 
     None -> req
   }
+}
+
+/// Encode string to Base64
+pub fn encode_content(content: String) -> String {
+  content
+  |> bit_array.from_string
+  |> bit_array.base64_encode(True)
 }
