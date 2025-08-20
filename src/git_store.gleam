@@ -43,10 +43,7 @@ pub type GitHubFile {
   GitHubFileDelete(message: String, sha: String)
 }
 
-pub fn repos_url(config: GitHubConfig) -> String {
-  config.base_url <> "/repos"
-}
-
+/// Create a URL for creating, updating and deleting content on a GitHub repository
 fn contents_url(config: GitHubConfig, path: String) -> String {
   utils.build_path(config.base_url, [
     "repos",
@@ -72,7 +69,7 @@ pub fn get_file(
 
 /// Create a file from a file object on a GitHub repository at the given path
 /// https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#create-or-update-file-contents
-fn create_file(
+pub fn create_file(
   config: GitHubConfig,
   filename: String,
   content: String,
@@ -87,7 +84,7 @@ fn create_file(
 
 /// Get a file object from a GitHub repositiory and, if it exists, delete it
 /// https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#delete-a-file
-fn delete_file(
+pub fn delete_file(
   config: GitHubConfig,
   filename: String,
 ) -> Result(response.Response(String), GitStoreError) {
@@ -106,6 +103,7 @@ fn delete_file(
   res
 }
 
+/// Create a JSON string from a GitHubFile
 fn file_to_json(file: GitHubFile) -> String {
   let base_fields = [#("message", json.string(file.message))]
   let other_field = case file {
