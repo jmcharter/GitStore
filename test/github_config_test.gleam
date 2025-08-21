@@ -1,4 +1,3 @@
-import git_store/errors
 import git_store/github_config
 import gleeunit/should
 

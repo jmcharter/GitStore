@@ -2,19 +2,17 @@ import gleam/dynamic/decode
 import gleam/http
 import gleam/http/request
 import gleam/httpc
-import gleam/io
 import gleam/json
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 
-import envoy
 import logging
 
 import git_store/decoders
 import git_store/errors
-import git_store/github_config.{type GitHubConfig, GitHubConfig}
+import git_store/github_config.{type GitHubConfig}
 import git_store/types.{
   type ExpectResponseType, type GitHubFile, type GitHubResponse,
   expect_to_string, response_to_string,
@@ -242,20 +240,4 @@ fn send_request(
     logging.log(logging.Error, string.inspect(error))
     errors.HTTPError(string.inspect(error))
   })
-}
-
-pub fn main() -> Nil {
-  logging.configure()
-  logging.set_level(logging.Debug)
-  let owner = envoy.get("GITHUB_OWNER") |> result.unwrap("")
-  let repo = envoy.get("GITHUB_REPO") |> result.unwrap("")
-  let token = envoy.get("GITHUB_TOKEN") |> result.unwrap("")
-  let base_url =
-    envoy.get("GITHUB_BASE_URL") |> result.unwrap("https://api.github.com")
-  let config = GitHubConfig(owner, repo, token, base_url)
-  logging.log(logging.Debug, "Configuration: " <> config |> string.inspect)
-  delete_file(config, "test2")
-  create_file(config, "test2", "hello, world!")
-
-  io.println("Hello from git_store!")
 }
