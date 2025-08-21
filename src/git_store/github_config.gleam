@@ -1,6 +1,8 @@
-import envoy
 import gleam/result
+
+import envoy
 import logging
+
 import git_store/errors
 
 pub type GitHubConfig {
@@ -13,7 +15,12 @@ pub fn new(owner: String, repo: String, token: String) -> GitHubConfig {
 }
 
 /// Create a new GitHubConfig for GitHub Enterprise with custom base URL
-pub fn new_enterprise(owner: String, repo: String, token: String, base_url: String) -> GitHubConfig {
+pub fn new_enterprise(
+  owner: String,
+  repo: String,
+  token: String,
+  base_url: String,
+) -> GitHubConfig {
   GitHubConfig(owner, repo, token, base_url)
 }
 
@@ -28,29 +35,33 @@ pub fn empty() -> GitHubConfig {
 pub fn from_env() -> Result(GitHubConfig, errors.GitStoreError) {
   use owner <- result.try(
     envoy.get("GITHUB_OWNER")
-    |> result.map_error(fn(_) { 
-      errors.ParsingError("Missing GITHUB_OWNER environment variable") 
+    |> result.map_error(fn(_) {
+      errors.ParsingError("Missing GITHUB_OWNER environment variable")
       |> errors.log_error
-    })
+    }),
   )
   use repo <- result.try(
-    envoy.get("GITHUB_REPO") 
-    |> result.map_error(fn(_) { 
-      errors.ParsingError("Missing GITHUB_REPO environment variable") 
+    envoy.get("GITHUB_REPO")
+    |> result.map_error(fn(_) {
+      errors.ParsingError("Missing GITHUB_REPO environment variable")
       |> errors.log_error
-    })
+    }),
   )
   use token <- result.try(
     envoy.get("GITHUB_TOKEN")
-    |> result.map_error(fn(_) { 
-      errors.ParsingError("Missing GITHUB_TOKEN environment variable") 
+    |> result.map_error(fn(_) {
+      errors.ParsingError("Missing GITHUB_TOKEN environment variable")
       |> errors.log_error
-    })
+    }),
   )
-  
-  let base_url = envoy.get("GITHUB_BASE_URL") |> result.unwrap("https://api.github.com")
-  
-  logging.log(logging.Info, "Successfully loaded GitHub config from environment variables")
+
+  let base_url =
+    envoy.get("GITHUB_BASE_URL") |> result.unwrap("https://api.github.com")
+
+  logging.log(
+    logging.Info,
+    "Successfully loaded GitHub config from environment variables",
+  )
   Ok(GitHubConfig(owner, repo, token, base_url))
 }
 
