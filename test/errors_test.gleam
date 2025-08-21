@@ -1,4 +1,4 @@
-import git_store/errors
+import git_store/internal/errors
 import gleam/dynamic/decode
 import gleam/http/response
 import gleam/json

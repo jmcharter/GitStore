@@ -5,7 +5,7 @@ import gleam/string
 
 import logging
 
-import git_store/types.{
+import git_store/internal/types.{
   type CommitInfo, type DirListing, type FileInfo, type GitHubResponse,
 }
 

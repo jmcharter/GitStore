@@ -3,7 +3,7 @@ import gleam/option.{None, Some}
 
 import gleeunit/should
 
-import git_store/utils
+import git_store/internal/utils
 
 pub fn build_path_test() {
   utils.build_path("https://api.github.com", ["repos", "owner", "repo"])

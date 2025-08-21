@@ -10,20 +10,44 @@ import gleam/string
 
 import logging
 
-import git_store/decoders
-import git_store/errors
-import git_store/github_config.{type GitHubConfig}
-import git_store/types.{
+import git_store/internal/decoders
+import git_store/internal/errors
+import git_store/internal/types.{
   type ExpectResponseType, type GitHubFile, type GitHubResponse,
   expect_to_string, response_to_string,
 }
-import git_store/utils
+import git_store/internal/utils
 
 const create_prefix = "add: "
 
 const delete_prefix = "delete: "
 
 const update_prefix = "update: "
+
+// Configuration types and functions
+pub type GitHubConfig {
+  GitHubConfig(owner: String, repo: String, token: String, base_url: String)
+}
+
+/// Create a new GitHubConfig with default GitHub.com API base URL
+pub fn new_config(owner: String, repo: String, token: String) -> GitHubConfig {
+  GitHubConfig(owner, repo, token, "https://api.github.com")
+}
+
+/// Create a new GitHubConfig for GitHub Enterprise with custom base URL
+pub fn new_enterprise_config(
+  owner: String,
+  repo: String,
+  token: String,
+  base_url: String,
+) -> GitHubConfig {
+  GitHubConfig(owner, repo, token, base_url)
+}
+
+/// Create an empty GitHubConfig (for testing or manual construction)
+pub fn empty_config() -> GitHubConfig {
+  GitHubConfig("", "", "", "")
+}
 
 /// Create a URL for creating, updating and deleting content on a GitHub repository
 fn contents_url(config: GitHubConfig, path: String) -> String {

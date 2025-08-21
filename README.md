@@ -20,10 +20,10 @@ gleam add git_store@1
 Create a `GitHubConfig` with your repository details and authentication token:
 
 ```gleam
-import git_store/github_config
+import git_store
 
 // Using the convenience function (recommended)
-let config = github_config.new(
+let config = git_store.new_config(
   owner: "your-username",
   repo: "your-repository", 
   token: "ghp_your-github-token"
@@ -34,7 +34,7 @@ let config = github_config.new(
 
 **Direct construction**
 ```gleam
-import git_store/github_config.{GitHubConfig}
+import git_store.{GitHubConfig}
 
 let config = GitHubConfig(
   owner: "your-username",
@@ -46,9 +46,9 @@ let config = GitHubConfig(
 
 **For GitHub Enterprise**
 ```gleam
-import git_store/github_config
+import git_store
 
-let config = github_config.new_enterprise(
+let config = git_store.new_enterprise_config(
   owner: "your-org",
   repo: "your-repo",
   token: "your-token", 
@@ -60,12 +60,11 @@ let config = github_config.new_enterprise(
 
 ```gleam
 import git_store
-import git_store/github_config
 import gleam/io
 import gleam/string
 
 pub fn main() -> Nil {
-  let config = github_config.new(
+  let config = git_store.new_config(
     owner: "your-username",
     repo: "your-repository",
     token: "your-github-token"

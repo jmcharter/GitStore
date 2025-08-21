@@ -1,5 +1,5 @@
-import git_store/decoders
-import git_store/types
+import git_store/internal/decoders
+import git_store/internal/types
 import gleam/json
 import gleam/option.{None, Some}
 import gleeunit/should
