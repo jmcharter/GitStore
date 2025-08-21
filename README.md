@@ -44,26 +44,6 @@ let config = GitHubConfig(
 )
 ```
 
-**From Environment Variables**
-```gleam
-import git_store/github_config
-
-// Using the convenience function
-case github_config.from_env() {
-  Ok(config) -> config
-  Error(err) -> panic as "Failed to load config"
-}
-
-// Or handle errors gracefully
-let config = case github_config.from_env() {
-  Ok(config) -> config
-  Error(err) -> {
-    io.println("Config error: " <> string.inspect(err))
-    github_config.empty()  // fallback or exit
-  }
-}
-```
-
 **For GitHub Enterprise**
 ```gleam
 import git_store/github_config
