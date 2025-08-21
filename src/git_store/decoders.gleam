@@ -15,6 +15,19 @@ pub fn create_file_response_decoder() -> decode.Decoder(GitHubResponse) {
   decode.success(types.GitHubCreateFileResponse(content:, commit:))
 }
 
+pub fn update_file_response_decoder() -> decode.Decoder(GitHubResponse) {
+  use content <- decode.field("content", file_info_decoder())
+  use commit <- decode.field("commit", commit_info_decoder())
+  decode.success(types.GitHubUpdateFileResponse(content:, commit:))
+}
+
+pub fn delete_file_response_decoder() -> decode.Decoder(GitHubResponse) {
+  use content <- decode.field("content", decode.optional(decode.string))
+  // null for deletes
+  use commit <- decode.field("commit", commit_info_decoder())
+  decode.success(types.GitHubDeleteFileResponse(content:, commit:))
+}
+
 fn file_info_decoder() -> decode.Decoder(FileInfo) {
   use name <- decode.field("name", decode.string)
   use path <- decode.field("path", decode.string)

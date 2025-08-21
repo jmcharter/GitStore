@@ -28,6 +28,8 @@ pub type GitHubResponse {
   )
   GitHubGetDirResponse(List(DirListing))
   GitHubCreateFileResponse(content: FileInfo, commit: CommitInfo)
+  GitHubUpdateFileResponse(content: FileInfo, commit: CommitInfo)
+  GitHubDeleteFileResponse(content: Option(String), commit: CommitInfo)
 }
 
 pub type FileInfo {
