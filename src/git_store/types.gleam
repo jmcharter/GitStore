@@ -12,13 +12,6 @@ pub fn expect_to_string(expect: ExpectResponseType) -> String {
   }
 }
 
-pub type GitStoreError {
-  ParsingError(String)
-  HTTPError(String)
-  NoFileFound(String)
-  GitHubError
-}
-
 pub type GitHubResponse {
   GitHubGetFileResponse(
     content: String,
