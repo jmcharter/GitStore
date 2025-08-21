@@ -17,33 +17,79 @@ gleam add git_store@1
 
 ## Configuration
 
-Set the following environment variables:
+Create a `GitHubConfig` with your repository details and authentication token:
 
-```sh
-export GITHUB_OWNER="your-username"
-export GITHUB_REPO="your-repository"
-export GITHUB_TOKEN="your-github-token"
-export GITHUB_BASE_URL="https://api.github.com"  # Optional, defaults to GitHub.com
+```gleam
+import git_store/github_config
+
+// Using the convenience function (recommended)
+let config = github_config.new(
+  owner: "your-username",
+  repo: "your-repository", 
+  token: "ghp_your-github-token"
+)
 ```
 
-For GitHub Enterprise, set `GITHUB_BASE_URL` to your enterprise instance API URL.
+### Configuration Options
+
+**Direct construction**
+```gleam
+import git_store/github_config.{GitHubConfig}
+
+let config = GitHubConfig(
+  owner: "your-username",
+  repo: "your-repository", 
+  token: "ghp_your-github-token",
+  base_url: "https://api.github.com"
+)
+```
+
+**From Environment Variables**
+```gleam
+import git_store/github_config
+
+// Using the convenience function
+case github_config.from_env() {
+  Ok(config) -> config
+  Error(err) -> panic as "Failed to load config"
+}
+
+// Or handle errors gracefully
+let config = case github_config.from_env() {
+  Ok(config) -> config
+  Error(err) -> {
+    io.println("Config error: " <> string.inspect(err))
+    github_config.empty()  // fallback or exit
+  }
+}
+```
+
+**For GitHub Enterprise**
+```gleam
+import git_store/github_config
+
+let config = github_config.new_enterprise(
+  owner: "your-org",
+  repo: "your-repo",
+  token: "your-token", 
+  base_url: "https://github.your-company.com/api/v3"
+)
+```
 
 ## Usage
 
 ```gleam
 import git_store
-import git_store/github_config.{GitHubConfig}
-import git_store/errors
-import envoy
+import git_store/github_config
+import gleam/io
+import gleam/string
 
 pub fn main() -> Nil {
-  // Load configuration from environment
-  let assert Ok(owner) = envoy.get("GITHUB_OWNER")
-  let assert Ok(repo) = envoy.get("GITHUB_REPO") 
-  let assert Ok(token) = envoy.get("GITHUB_TOKEN")
-  let base_url = envoy.get("GITHUB_BASE_URL") |> result.unwrap("https://api.github.com")
-  
-  let config = GitHubConfig(owner, repo, token, base_url)
+  let config = github_config.new(
+    owner: "your-username",
+    repo: "your-repository",
+    token: "your-github-token"
+  )
 
   // Create a new file
   case git_store.create_file(config, "hello.txt", "Hello, World!") {
