@@ -1,4 +1,3 @@
-import gleam/bit_array
 import gleam/dynamic/decode
 import gleam/http
 import gleam/http/request
@@ -14,34 +13,20 @@ import gleam/string
 import envoy
 import logging
 
+import git_store/decoders
+import git_store/github_config.{type GitHubConfig, GitHubConfig}
+import git_store/types.{
+  type CommitInfo, type DirListing, type ExpectResponseType, type FileInfo,
+  type GitHubFile, type GitHubResponse, type GitStoreError, expect_to_string,
+  response_to_string,
+}
 import git_store/utils
 
 const create_prefix = "add: "
 
 const delete_prefix = "delete: "
 
-pub type GitStoreError {
-  ParsingError(String)
-  HTTPError(String)
-  NoFileFound(String)
-  GitHubError
-}
-
-pub type GitHubConfig {
-  GithubConfig(owner: String, repo: String, token: String, base_url: String)
-}
-
-pub type GitHubResponse {
-  GitHubFileResponse(content: String, encoding: String, sha: String, size: Int)
-}
-
-/// The required fields to create a new file in a GitHub repo.
-/// Message is the commit message
-/// Content is the base64 encoded text content of the file
-pub type GitHubFile {
-  GitHubFileCreate(message: String, content: String)
-  GitHubFileDelete(message: String, sha: String)
-}
+const update_prefix = "update: "
 
 /// Create a URL for creating, updating and deleting content on a GitHub repository
 fn contents_url(config: GitHubConfig, path: String) -> String {
@@ -62,9 +47,35 @@ fn contents_url(config: GitHubConfig, path: String) -> String {
 pub fn get_file(
   config: GitHubConfig,
   path: String,
-) -> Result(response.Response(String), GitStoreError) {
+) -> Result(GitHubResponse, GitStoreError) {
+  get_file_or_directory(config, path, types.ExpectFile)
+}
+
+fn get_file_or_directory(
+  config: GitHubConfig,
+  path: String,
+  expect: ExpectResponseType,
+) -> Result(GitHubResponse, GitStoreError) {
   let url = contents_url(config, path)
-  send_request(config, http.Get, url, None)
+  use res <- result.try(send_request(config, http.Get, url, None))
+  let body =
+    res.body
+    |> response_from_json
+  use response <- result.try(
+    body
+    |> result.map_error(fn(err) { types.ParsingError(err |> string.inspect) }),
+  )
+  case expect, response {
+    types.ExpectFile, types.GitHubGetFileResponse(_, _, _, _) -> Ok(response)
+    types.ExpectDir, types.GitHubGetDirResponse(_) -> Ok(response)
+    _, _ ->
+      Error(types.ParsingError(
+        "Expected: "
+        <> expect |> expect_to_string
+        <> ", Got: "
+        <> response |> response_to_string,
+      ))
+  }
 }
 
 /// Create a file from a file object on a GitHub repository at the given path
@@ -76,10 +87,38 @@ pub fn create_file(
 ) -> Result(response.Response(String), GitStoreError) {
   let url = contents_url(config, filename)
   let content = content |> utils.encode_content
-  let file = GitHubFileCreate(create_prefix <> filename, content:)
+  let file = types.GitHubFileCreate(create_prefix <> filename, content:)
   let res = send_request(config, http.Put, url, Some(file |> file_to_json))
   logging.log(logging.Debug, "Writing file: " <> string.inspect(res))
   res
+}
+
+/// Get a file object from a GitHub repositiory and, if it exists, replace the content with the given content
+/// https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#create-or-update-file-contents
+pub fn update_file(
+  config: GitHubConfig,
+  filename: String,
+  content: String,
+) -> Result(response.Response(String), GitStoreError) {
+  let url = contents_url(config, filename)
+  use original <- result.try(
+    get_file(config, filename)
+    |> result.map_error(fn(_) { types.NoFileFound(filename) }),
+  )
+  case original {
+    types.GitHubGetFileResponse(_, _, sha, _) -> {
+      let file =
+        types.GitHubFileUpdate(
+          update_prefix <> filename,
+          content: content |> utils.encode_content,
+          sha: sha,
+        )
+      let res = send_request(config, http.Put, url, Some(file |> file_to_json))
+      logging.log(logging.Debug, "Deleting file: " <> string.inspect(res))
+      res
+    }
+    _ -> Error(types.ParsingError("Expected file"))
+  }
 }
 
 /// Get a file object from a GitHub repositiory and, if it exists, delete it
@@ -91,65 +130,50 @@ pub fn delete_file(
   let url = contents_url(config, filename)
   use original <- result.try(
     get_file(config, filename)
-    |> result.map_error(fn(_) { NoFileFound(filename) }),
+    |> result.map_error(fn(_) { types.NoFileFound(filename) }),
   )
-  use original_file <- result.try(
-    file_from_json(original.body)
-    |> result.map_error(fn(err) { ParsingError(err |> string.inspect) }),
-  )
-  let file = GitHubFileDelete(delete_prefix <> filename, sha: original_file.sha)
-  let res = send_request(config, http.Delete, url, Some(file |> file_to_json))
-  logging.log(logging.Debug, "Deleting file: " <> string.inspect(res))
-  res
+  case original {
+    types.GitHubGetFileResponse(_, _, sha, _) -> {
+      let file = types.GitHubFileDelete(delete_prefix <> filename, sha: sha)
+      let res =
+        send_request(config, http.Delete, url, Some(file |> file_to_json))
+      logging.log(logging.Debug, "Deleting file: " <> string.inspect(res))
+      res
+    }
+    _ -> Error(types.ParsingError("Expected file"))
+  }
 }
 
 /// Create a JSON string from a GitHubFile
 fn file_to_json(file: GitHubFile) -> String {
   let base_fields = [#("message", json.string(file.message))]
-  let other_field = case file {
-    GitHubFileCreate(_msg, content) -> {
+  let other_fields = case file {
+    types.GitHubFileCreate(_msg, content) -> {
       [#("content", json.string(content))]
     }
-    GitHubFileDelete(_msg, sha) -> [#("sha", json.string(sha))]
+    types.GitHubFileDelete(_msg, sha) -> [#("sha", json.string(sha))]
+    types.GitHubFileUpdate(_msg, content, sha) -> [
+      #("content", json.string(content)),
+      #("sha", json.string(sha)),
+    ]
   }
-  list.append(base_fields, other_field)
+  list.append(base_fields, other_fields)
   |> json.object
   |> json.to_string
 }
 
 /// Parse the JSON data from file.body, converting the base64 encoded content
 /// into a String
-fn file_from_json(
+fn response_from_json(
   json_string: String,
 ) -> Result(GitHubResponse, json.DecodeError) {
   logging.log(logging.Debug, json_string)
-  let file_decoder = {
-    use content <- decode.field(
-      "content",
-      decode.then(decode.string, fn(item) {
-        let decoded =
-          item
-          |> string.replace("\n", "")
-          |> bit_array.base64_decode
-          |> result.try(bit_array.to_string)
-        case decoded {
-          Ok(str) -> decode.success(str)
-          Error(_) -> {
-            logging.log(
-              logging.Error,
-              "Failed to decode expected base64 string: " <> item,
-            )
-            decode.failure("", "A base64 encoded String")
-          }
-        }
-      }),
-    )
-    use encoding <- decode.field("encoding", decode.string)
-    use sha <- decode.field("sha", decode.string)
-    use size <- decode.field("size", decode.int)
-    decode.success(GitHubFileResponse(content:, encoding:, sha:, size:))
+  case
+    json.parse(json_string, using: decode.list(decoders.dir_listing_decoder()))
+  {
+    Ok(listings) -> Ok(types.GitHubGetDirResponse(listings))
+    Error(_) -> json.parse(json_string, using: decoders.file_decoder())
   }
-  json.parse(json_string, using: file_decoder)
 }
 
 fn send_request(
@@ -162,7 +186,7 @@ fn send_request(
     request.to(endpoint)
     |> result.map_error(fn(_) {
       logging.log(logging.Error, "Unable to parse URL")
-      ParsingError("Unable to parse URL: " <> endpoint)
+      types.ParsingError("Unable to parse URL: " <> endpoint)
     }),
   )
   let res =
@@ -177,7 +201,7 @@ fn send_request(
   res
   |> result.map_error(fn(error) {
     logging.log(logging.Error, string.inspect(error))
-    HTTPError(string.inspect(error))
+    types.HTTPError(string.inspect(error))
   })
 }
 
@@ -189,14 +213,11 @@ pub fn main() -> Nil {
   let token = envoy.get("GITHUB_TOKEN") |> result.unwrap("")
   let base_url =
     envoy.get("GITHUB_BASE_URL") |> result.unwrap("https://api.github.com")
-  let config = GithubConfig(owner, repo, token, base_url)
+  let config = GitHubConfig(owner, repo, token, base_url)
   logging.log(logging.Debug, config |> string.inspect)
-  let file = get_file(config, "README.md") |> result.unwrap(response.new(400))
-  echo file_from_json(file.body)
-  let new_file = create_file(config, "test", "foo bar baz")
-  let file = get_file(config, "test") |> result.unwrap(response.new(400))
-  echo file_from_json(file.body)
-  echo delete_file(config, "test")
+  echo get_file(config, "src/test")
+  create_file(config, "test2", "hello, world!")
+  update_file(config, "test2", "hello, gleam!")
 
   io.println("Hello from git_store!")
 }
