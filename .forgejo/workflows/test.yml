@@ -43,6 +43,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}
 
-      - run: mise x -- gleam deps download
-      - run: mise x -- gleam test
-      - run: mise x -- gleam format --check src test
+      - name: Download Gleam dependencies
+        run: mise x -- gleam deps download
+
+      - name: Run tests
+        run: mise x -- gleam test
+
+      - name: Check formatting
+        run: mise x -- gleam format --check src test
