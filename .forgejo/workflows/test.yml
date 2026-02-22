@@ -1,0 +1,28 @@
+name: test
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: codeberg-medium
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Mise
+        run: curl https://mise.run | sh
+
+      - name: Install Tools
+        run: |
+          ~/.local/bin/mise install
+          eval "$(mise activate bash --shims)" # Adds the activated tools to $PATH
+        env:
+          GITHUB_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}
+
+      - run: mise x -- gleam deps download
+      - run: mise x -- gleam test
+      - run: mise x -- gleam format --check src test

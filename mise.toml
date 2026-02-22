@@ -1,0 +1,7 @@
+[tools]
+erlang = "28.3.2"
+gleam = "1.14.0"
+rebar = "3.26.0"
+
+[tasks.format]
+run = "gleam format src test"
