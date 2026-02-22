@@ -16,7 +16,7 @@ jobs:
       - name: Install Mise
         run: |
           curl https://mise.run | sh
-          echo "$HOME/.local/bin/mise" >> $FORGEJO_PATH
+          echo "$HOME/.local/bin" >> $FORGEJO_PATH
 
       - name: Install Tools
         run: |
